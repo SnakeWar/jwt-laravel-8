@@ -1,63 +1,194 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400"></a></p>
+php artisan migrate
+-----------------
+composer require tymon/jwt-auth
+-----------------
+composer update
+-----------------
+Open config/app.php file and register tymondesigns/jwt-auth package in providers as well as aliases.
+-----------------
+'providers' => [
+    ....
+    ....
+    Tymon\JWTAuth\Providers\LaravelServiceProvider::class,
+],
+-----------------
+'aliases' => [
+    ....
+    'JWTAuth' => Tymon\JWTAuth\Facades\JWTAuth::class,
+    'JWTFactory' => Tymon\JWTAuth\Facades\JWTFactory::class,
+    ....
+],
+-----------------
+Next, publish the JWT auth package configuration with below command.
+-----------------
+php artisan vendor:publish --provider="Tymon\JWTAuth\Providers\LaravelServiceProvider"
+-----------------
+Eventually, you need to run a command from the console to generate a secret auth secret.
+-----------------
+php artisan jwt:secret
+-----------------
+Open the .env and go to absolute bottom and check the JWT secret auth key.
+-----------------
+JWT_SECRET=secret_jwt_key
+-----------------
+Open app/Models/User.php and add getJWTIdentifier and getJWTCustomClaims methods.
+-----------------
+    public function getJWTIdentifier() {
+        return $this->getKey();
+    }
 
-<p align="center">
-<a href="https://travis-ci.org/laravel/framework"><img src="https://travis-ci.org/laravel/framework.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+    public function getJWTCustomClaims() {
+        return [];
+    }    
+-----------------
+Go to config/auth.php, change guard property of defaults array to 'api', then navigate to guards > api > driver property and change driver’s prop to 'jwt' instead of token.
+-----------------
+<?php
 
-## About Laravel
+return [
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+    'defaults' => [
+        'guard' => 'api',
+        'passwords' => 'users',
+    ],
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+    'guards' => [
+       ...
+       ...
 
-## Learning Laravel
+        'api' => [
+            'driver' => 'jwt',
+            'provider' => 'users',
+            'hash' => false,
+        ],
+    ],
+Go to console and execute the below command to create authentication controller.
+-----------------
+ php artisan make:controller JwtAuthController
+ -----------------
+Open and add the below code in app/Http/Controllers/JwtAuthController.php.
+-----------------
+<?php
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+namespace App\Http\Controllers;
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains over 1500 video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+use Illuminate\Http\Request;
 
-## Laravel Sponsors
+use Illuminate\Support\Facades\Auth;
+use Validator;
+use App\Models\User;
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the Laravel [Patreon page](https://patreon.com/taylorotwell).
 
-### Premium Partners
+class JwtAuthController extends Controller
+{
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Cubet Techno Labs](https://cubettech.com)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[Many](https://www.many.co.uk)**
-- **[Webdock, Fast VPS Hosting](https://www.webdock.io/en)**
-- **[DevSquad](https://devsquad.com)**
-- **[Curotec](https://www.curotec.com/)**
-- **[OP.GG](https://op.gg)**
+    public function __construct() {
+        $this->middleware('auth:api', ['except' => ['login', 'register']]);
+    }
 
-## Contributing
+    /**
+     * Get a JWT via given credentials.
+    */
+    public function login(Request $request){
+    	$req = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'password' => 'required|string|min:5',
+        ]);
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+        if ($req->fails()) {
+            return response()->json($req->errors(), 422);
+        }
 
-## Code of Conduct
+        if (! $token = auth()->attempt($req->validated())) {
+            return response()->json(['Auth error' => 'Unauthorized'], 401);
+        }
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+        return $this->generateToken($token);
+    }
 
-## Security Vulnerabilities
+    /**
+     * Sign up.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function register(Request $request) {
+        $req = Validator::make($request->all(), [
+            'name' => 'required|string|between:2,100',
+            'email' => 'required|string|email|max:100|unique:users',
+            'password' => 'required|string|confirmed|min:6',
+        ]);
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+        if($req->fails()){
+            return response()->json($req->errors()->toJson(), 400);
+        }
 
-## License
+        $user = User::create(array_merge(
+                    $req->validated(),
+                    ['password' => bcrypt($request->password)]
+                ));
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
-"# jwt-laravel-8" 
+        return response()->json([
+            'message' => 'User signed up',
+            'user' => $user
+        ], 201);
+    }
+
+
+    /**
+     * Sign out
+    */
+    public function signout() {
+        auth()->logout();
+        return response()->json(['message' => 'User loged out']);
+    }
+
+    /**
+     * Token refresh
+    */
+    public function refresh() {
+        return $this->generateToken(auth()->refresh());
+    }
+
+    /**
+     * User
+    */
+    public function user() {
+        return response()->json(auth()->user());
+    }
+
+    /**
+     * Generate token
+    */
+    protected function generateToken($token){
+        return response()->json([
+            'access_token' => $token,
+            'token_type' => 'bearer',
+            'expires_in' => auth()->factory()->getTTL() * 60,
+            'user' => auth()->user()
+        ]);
+    }
+}
+-----------------
+Head over to routes/api.php file and register API routes for Laravel application, routes are powered by RouteServiceProvider within the group aligned with api middleware group.
+-----------------
+<?php
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\JwtAuthController;
+
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'auth'
+], function ($router) {
+    Route::post('/signup', [JwtAuthController::class, 'register']);
+    Route::post('/signin', [JwtAuthController::class, 'login']);
+    Route::get('/user', [JwtAuthController::class, 'user']);
+    Route::post('/token-refresh', [JwtAuthController::class, 'refresh']);
+    Route::post('/signout', [JwtAuthController::class, 'signout']);
+});
+-----------------
+Go to console and execute below command:
+-----------------
+php artisan serve
