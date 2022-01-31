@@ -4,10 +4,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 
-use Illuminate\Support\Facades\Auth;
 use Validator;
 use App\Models\User;
-
 
 class JwtAuthController extends Controller
 {
@@ -45,7 +43,7 @@ class JwtAuthController extends Controller
         $req = Validator::make($request->all(), [
             'name' => 'required|string|between:2,100',
             'email' => 'required|string|email|max:100|unique:users',
-            'password' => 'required|string|confirmed|min:6',
+            //'password' => 'required|string|confirmed|min:6',
         ]);
 
         if($req->fails()){
