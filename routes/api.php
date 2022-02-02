@@ -28,5 +28,11 @@ Route::group([
     Route::get('/user', [JwtAuthController::class, 'user']);
     Route::post('/token-refresh', [JwtAuthController::class, 'refresh']);
     Route::post('/signout', [JwtAuthController::class, 'signout']);
+});
+Route::group([
+    'middleware' => 'auth:api',
+    'prefix' => 'auth'
+], function () {
+    // Routes that need authentication here
     Route::resource('/todos', TodoController::class);
 });
